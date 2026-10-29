@@ -1,56 +1,50 @@
-const apikey = process.env.EASYBROKER_API_KEY;
+import { obtenerPropiedades } from "./easybroker.ts";
 
-if (!apikey) {
-  throw new Error("Falta configurar la variable de entorno EASYBROKER_API_KEY");
+const server = Bun.serve({
+  port: 3055,
+
+  async fetch(req) {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/" && req.method === "GET") {
+  return Response.json({
+    mensaje: "API de EasyBroker funcionando",
+    endpoints: {
+      propiedades: "/api/properties?page=1&limit=3",
+    },
+  });
 }
 
-const headers = {
-  "X-Authorization": apikey,
-  "Accept": "application/json",
-};
+    if (url.pathname === "/api/properties" && req.method === "GET") {
+      try {
+        const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+        const requestedLimit = Number(url.searchParams.get("limit")) || 20;
+const limit = Math.min(50, Math.max(1, requestedLimit));
+const resultado = await obtenerPropiedades(page, limit);
 
-const limit = 50;
-let pagina = 1;
-let total = 0;
-let contador = 0;
+        return new Response(JSON.stringify(resultado, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+          },
+        });
+      } catch (error) {
+        console.error(
+  "Error consultando EasyBroker:",
+  error instanceof Error ? error.message : error,
+);
 
-while (true) {
-  const response = await fetch(
-    `https://api.easybroker.com/v1/properties?page=${pagina}&limit=${limit}`,
-    { method: "GET", headers },
-  );
-
-  if (!response.ok) {
-    throw new Error(`Error HTTP ${response.status} en la página ${pagina}`);
-  }
-
-  const data = await response.json();
-
-  total = data.pagination.total;
-
-  console.log(`Página ${pagina}: ${data.content.length} propiedades`);
-
-  for (const propiedad of data.content) {
-    console.log("----------------------------");
-    console.log("ID:", propiedad.public_id);
-    console.log("Título:", propiedad.title);
-    console.log("Ubicación:", propiedad.location);
-    console.log("Tipo:", propiedad.property_type);
-
-    for (const operacion of propiedad.operations) {
-      console.log(operacion.type, operacion.formatted_amount);
+        return Response.json(
+          { error: "No se pudieron consultar las propiedades" },
+          { status: 502 },
+        );
+      }
     }
 
-    contador++;
-  }
+    return Response.json(
+      { error: "Endpoint no encontrado" },
+      { status: 404 },
+    );
+  },
+});
 
-  if (data.content.length === 0 || contador >= total) {
-    break;
-  }
-
-  pagina++;
-}
-
-console.log("----------------------------");
-console.log("Total reportado por EasyBroker:", total);
-console.log("Propiedades procesadas:", contador);
+console.log(`Servidor activo en ${server.url}`);
